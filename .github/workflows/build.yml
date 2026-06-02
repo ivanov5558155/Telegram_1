@@ -48,10 +48,13 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
-      # 7. ГАРАНТИРОВАННЫЙ СБОР И ОТПРАВКА APK В АРТЕФАКТЫ
+      # 7. НЕУЯЗВИМЫЙ ПОИСК И ОТПРАВКА APK В АРТЕФАКТЫ
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: WeryGram-Debug-APK
-          path: TMessagesProj/build/outputs/apk/debug/*.apk
+          path: |
+            **/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/*/*.apk
+            build/outputs/apk/**/*.apk
           if-no-files-found: error
