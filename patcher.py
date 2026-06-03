@@ -34,8 +34,8 @@ def patch_werygram_core():
         code = code.replace(anchor, f'{werygram_toggle}\n        {anchor}')
         print("✅ Кнопка-тумблер WeryGram установлена на самый верх первого списка!")
     else:
-        # Резервный вариант, если структура иная
-        code = code.replace("switch (item.id) {", f"items.add(0, UItem.asCheck(9999, \"WeryGram Premium\"));\n        switch (item.id) {")
+        # Резервный вариант без буквы f (исправлено!)
+        code = code.replace("switch (item.id) {", "items.add(0, UItem.asCheck(9999, \"WeryGram Premium\"));\n        switch (item.id) {")
         print("✅ Кнопка-тумблер WeryGram установлена в начало списка (резервный метод).")
 
     # Вшиваем обработку клика: переключение тумблера + моментальное уведомление (Toast)
@@ -60,7 +60,7 @@ def patch_werygram_core():
             break;
         }"""
         code = code.replace(switch_anchor, f"{switch_anchor}\n            {click_logic}")
-        print("✅ Быстрый переключатель с уведомлением успешно добавлен в клики!")
+        print("✅ Быстрый переключатель с уведомлением успешно добавлен in клики!")
 
     with open(settings_path, "w", encoding="utf-8") as f:
         f.write(code)
@@ -93,7 +93,6 @@ def patch_werygram_core():
             mc_code = f.read()
         
         if "visual_premium" not in mc_code:
-            # Умная регулярка находит метод getUser независимо от того, Long или Integer там на входе
             mc_code = re.sub(
                 r'public TLRPC\.User getUser\((Long|Integer)\s+(\w+)\)\s*\{\s*return\s+(\w+)\.get\(\2\);\s*\}',
                 r'''public TLRPC.User getUser(\1 \2) {
