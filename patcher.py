@@ -449,14 +449,29 @@ def run():
     else:
         print(f"⚠️  Не найден: {MESSAGES_PATH}")
 
-    # ── 4. Создаём новый Activity файл ───────────────────────────────────
-    out_path = os.path.join(UI_DIR, "WeryGramPremiumActivity.java")
-    if os.path.exists(out_path):
-        print(f"ℹ️  {out_path} уже существует — перезаписываем.")
-    os.makedirs(UI_DIR, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(PREMIUM_ACTIVITY)
-    print(f"✅ WeryGramPremiumActivity.java создан: {out_path}")
+    # ── 4. Создаём WeryGramPremiumActivity.java во ВСЕХ модулях ─────────
+    # Все модули проекта которые компилируются в afat-сборке
+    MODULE_DIRS = [
+        "TMessagesProj/src/main/java/org/telegram/ui",
+        "TMessagesProj_App/src/main/java/org/telegram/ui",
+        "TMessagesProj_AppHockeyApp/src/main/java/org/telegram/ui",
+        "TMessagesProj_AppHuawei/src/main/java/org/telegram/ui",
+        "TMessagesProj_AppStandalone/src/main/java/org/telegram/ui",
+    ]
+
+    # Также динамически ищем любые другие ui-папки
+    found = set(MODULE_DIRS)
+    for root, dirs, files_in_dir in os.walk("."):
+        norm = root.replace(os.sep, "/").lstrip("./")
+        if norm.endswith("org/telegram/ui") and "/src/main/java/" in norm:
+            found.add(norm)
+
+    for ui_dir in sorted(found):
+        os.makedirs(ui_dir, exist_ok=True)
+        out_path = os.path.join(ui_dir, "WeryGramPremiumActivity.java")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(PREMIUM_ACTIVITY)
+        print(f"✅ WeryGramPremiumActivity.java → {out_path}")
 
     print("\n🎉  ВСЕ МОДУЛИ УСПЕШНО МОДИФИЦИРОВАНЫ!")
     print("    ➜ Запустите сборку: ./gradlew assembleDebug")
@@ -465,4 +480,4 @@ def run():
 
 if __name__ == "__main__":
     run()
-        
+    
