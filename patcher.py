@@ -5,15 +5,21 @@ import sys
 SETTINGS_PATH   = "TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java"
 USERCONFIG_PATH = "TMessagesProj/src/main/java/org/telegram/messenger/UserConfig.java"
 MESSAGES_PATH   = "TMessagesProj/src/main/java/org/telegram/messenger/MessagesController.java"
-UI_DIR          = "TMessagesProj/src/main/java/org/telegram/ui"
 
+# WeryGramPremiumActivity — только стандартные Android виджеты, никаких RecyclerView
 PREMIUM_ACTIVITY = """\
 package org.telegram.ui;
 
 import android.content.Context;
+import android.content.SharedPreferences;
+import android.graphics.Typeface;
+import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
+import android.widget.CompoundButton;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import org.telegram.messenger.AndroidUtilities;
@@ -22,21 +28,8 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.TextCheckCell;
-import org.telegram.ui.Components.RecyclerListView;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
 public class WeryGramPremiumActivity extends BaseFragment {
-
-    private static final int ROW_HEADER            = 0;
-    private static final int ROW_VISUAL_PREMIUM    = 1;
-    private static final int ROW_VERIFIED_BADGE    = 2;
-    private static final int ROW_HIDE_ADS          = 3;
-    private static final int ROW_ANIMATED_EMOJI    = 4;
-    private static final int ROW_PREMIUM_STICKERS  = 5;
-    private static final int ROW_PREMIUM_REACTIONS = 6;
-    private static final int ROWS_COUNT            = 7;
 
     private static final String KEY_VISUAL_PREMIUM  = "visual_premium";
     private static final String KEY_VERIFIED        = "wery_verified";
@@ -45,10 +38,7 @@ public class WeryGramPremiumActivity extends BaseFragment {
     private static final String KEY_PREM_STICKERS   = "wery_prem_stickers";
     private static final String KEY_PREM_REACTIONS  = "wery_prem_reactions";
 
-    private RecyclerListView listView;
-    private ListAdapter adapter;
-
-    private static android.content.SharedPreferences prefs() {
+    private static SharedPreferences prefs() {
         return MessagesController.getGlobalMainSettings();
     }
     private static boolean get(String key) { return prefs().getBoolean(key, false); }
@@ -72,135 +62,91 @@ public class WeryGramPremiumActivity extends BaseFragment {
             }
         });
 
-        fragmentView = new FrameLayout(context);
-        FrameLayout layout = (FrameLayout) fragmentView;
-        layout.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+        FrameLayout root = new FrameLayout(context);
+        root.setBackgroundColor(0xFFF0F0F0);
+        fragmentView = root;
 
-        listView = new RecyclerListView(context);
-        listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
-        listView.setVerticalScrollBarEnabled(false);
-        adapter = new ListAdapter(context);
-        listView.setAdapter(adapter);
+        ScrollView scroll = new ScrollView(context);
+        root.addView(scroll, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT));
 
-        listView.setOnItemClickListener(new RecyclerListView.OnItemClickListener() {
-            @Override
-            public void onItemClick(View view, int position) {
-                if (!(view instanceof TextCheckCell)) return;
-                TextCheckCell cell = (TextCheckCell) view;
-                switch (position) {
-                    case ROW_VISUAL_PREMIUM: {
-                        boolean next = !get(KEY_VISUAL_PREMIUM);
-                        set(KEY_VISUAL_PREMIUM, next);
-                        if (next) {
-                            set(KEY_VERIFIED, true);
-                            set(KEY_ANIM_EMOJI, true);
-                            set(KEY_PREM_STICKERS, true);
-                            set(KEY_PREM_REACTIONS, true);
-                        }
-                        cell.setChecked(next);
-                        adapter.notifyDataSetChanged();
-                        toast(next ? "WeryGram: Premium AKTIVIROVAN!" : "WeryGram: Premium otklyuchen");
-                        break;
-                    }
-                    case ROW_VERIFIED_BADGE: {
-                        boolean next = !get(KEY_VERIFIED);
-                        set(KEY_VERIFIED, next);
-                        cell.setChecked(next);
-                        toast(next ? "Galocka vklyuchena" : "Galocka skryta");
-                        break;
-                    }
-                    case ROW_HIDE_ADS: {
-                        boolean next = !get(KEY_HIDE_ADS);
-                        set(KEY_HIDE_ADS, next);
-                        cell.setChecked(next);
-                        toast(next ? "Reklama skryta" : "Reklama vklyuchena");
-                        break;
-                    }
-                    case ROW_ANIMATED_EMOJI: {
-                        boolean next = !get(KEY_ANIM_EMOJI);
-                        set(KEY_ANIM_EMOJI, next);
-                        cell.setChecked(next);
-                        toast(next ? "Animirovannye emoji vklyucheny" : "Emoji otklucheny");
-                        break;
-                    }
-                    case ROW_PREMIUM_STICKERS: {
-                        boolean next = !get(KEY_PREM_STICKERS);
-                        set(KEY_PREM_STICKERS, next);
-                        cell.setChecked(next);
-                        toast(next ? "Premium stikery vklyucheny" : "Stikery otklucheny");
-                        break;
-                    }
-                    case ROW_PREMIUM_REACTIONS: {
-                        boolean next = !get(KEY_PREM_REACTIONS);
-                        set(KEY_PREM_REACTIONS, next);
-                        cell.setChecked(next);
-                        toast(next ? "Rasshirennye reaktsii vklyucheny" : "Reaktsii bazovye");
-                        break;
-                    }
+        LinearLayout container = new LinearLayout(context);
+        container.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(container, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT));
+
+        // Заголовок секции
+        TextView header = new TextView(context);
+        header.setText("VIZUALNYE NASTROYKI");
+        header.setTextSize(13);
+        header.setTextColor(0xFF79879B);
+        header.setPadding(AndroidUtilities.dp(21), AndroidUtilities.dp(16),
+            AndroidUtilities.dp(21), AndroidUtilities.dp(8));
+        container.addView(header);
+
+        // Строки тогглов
+        addToggleRow(context, container, "Vizualno Telegram Premium", KEY_VISUAL_PREMIUM, new Runnable() {
+            @Override public void run() {
+                if (get(KEY_VISUAL_PREMIUM)) {
+                    set(KEY_VERIFIED, true);
+                    set(KEY_ANIM_EMOJI, true);
+                    set(KEY_PREM_STICKERS, true);
+                    set(KEY_PREM_REACTIONS, true);
                 }
             }
         });
-
-        layout.addView(listView, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT));
+        addToggleRow(context, container, "Galocka verifikacii", KEY_VERIFIED, null);
+        addToggleRow(context, container, "Skryt reklamu", KEY_HIDE_ADS, null);
+        addToggleRow(context, container, "Animirovannye emoji", KEY_ANIM_EMOJI, null);
+        addToggleRow(context, container, "Premium stikery", KEY_PREM_STICKERS, null);
+        addToggleRow(context, container, "Rasshirennye reakcii", KEY_PREM_REACTIONS, null);
 
         return fragmentView;
     }
 
-    private void toast(String msg) {
-        if (getParentActivity() != null)
-            Toast.makeText(getParentActivity(), msg, Toast.LENGTH_SHORT).show();
-    }
+    private void addToggleRow(Context ctx, LinearLayout parent,
+                               String label, final String key, final Runnable onEnable) {
+        LinearLayout row = new LinearLayout(ctx);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundColor(0xFFFFFFFF);
+        row.setPadding(AndroidUtilities.dp(21), AndroidUtilities.dp(14),
+            AndroidUtilities.dp(21), AndroidUtilities.dp(14));
 
-    private class ListAdapter extends RecyclerView.Adapter {
-        private static final int TYPE_HEADER = 0;
-        private static final int TYPE_CHECK  = 1;
-        private final Context mCtx;
+        TextView tv = new TextView(ctx);
+        tv.setText(label);
+        tv.setTextSize(16);
+        tv.setTextColor(0xFF000000);
+        LinearLayout.LayoutParams tvParams = new LinearLayout.LayoutParams(
+            0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        row.addView(tv, tvParams);
 
-        ListAdapter(Context ctx) { mCtx = ctx; }
-
-        @Override public int getItemCount() { return ROWS_COUNT; }
-        @Override public int getItemViewType(int pos) { return pos == ROW_HEADER ? TYPE_HEADER : TYPE_CHECK; }
-
-        @Override
-        public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int type) {
-            if (type == TYPE_HEADER) {
-                TextView tv = new TextView(mCtx);
-                tv.setPadding(AndroidUtilities.dp(21), AndroidUtilities.dp(14),
-                    AndroidUtilities.dp(21), AndroidUtilities.dp(6));
-                tv.setTextSize(13);
-                tv.setTextColor(0xFF79879B);
-                tv.setText("VIZUALNYE NASTROYKI");
-                tv.setLayoutParams(new RecyclerView.LayoutParams(
-                    RecyclerView.LayoutParams.MATCH_PARENT,
-                    RecyclerView.LayoutParams.WRAP_CONTENT));
-                return new RecyclerView.ViewHolder(tv) {};
+        final Switch sw = new Switch(ctx);
+        sw.setChecked(get(key));
+        sw.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                set(key, isChecked);
+                if (isChecked && onEnable != null) onEnable.run();
+                if (getParentActivity() != null)
+                    Toast.makeText(getParentActivity(),
+                        label + (isChecked ? ": ON" : ": OFF"),
+                        Toast.LENGTH_SHORT).show();
             }
-            TextCheckCell v = new TextCheckCell(mCtx);
-            v.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-            return new RecyclerView.ViewHolder(v) {};
-        }
+        });
+        row.addView(sw);
 
-        @Override
-        public void onBindViewHolder(RecyclerView.ViewHolder holder, int pos) {
-            if (pos == ROW_HEADER) return;
-            TextCheckCell cell = (TextCheckCell) holder.itemView;
-            switch (pos) {
-                case ROW_VISUAL_PREMIUM:
-                    cell.setTextAndCheck("Vizualno Telegram Premium", get(KEY_VISUAL_PREMIUM), true); break;
-                case ROW_VERIFIED_BADGE:
-                    cell.setTextAndCheck("Galocka verifikatsii", get(KEY_VERIFIED), true); break;
-                case ROW_HIDE_ADS:
-                    cell.setTextAndCheck("Skryt reklamu", get(KEY_HIDE_ADS), true); break;
-                case ROW_ANIMATED_EMOJI:
-                    cell.setTextAndCheck("Animirovannye emoji", get(KEY_ANIM_EMOJI), true); break;
-                case ROW_PREMIUM_STICKERS:
-                    cell.setTextAndCheck("Premium stikery", get(KEY_PREM_STICKERS), true); break;
-                case ROW_PREMIUM_REACTIONS:
-                    cell.setTextAndCheck("Rasshirennye reaktsii", get(KEY_PREM_REACTIONS), true); break;
-            }
-        }
+        // Разделитель
+        View divider = new View(ctx);
+        divider.setBackgroundColor(0xFFE0E0E0);
+        LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        dp.setMarginStart(AndroidUtilities.dp(21));
+
+        parent.addView(row);
+        parent.addView(divider, dp);
     }
 }
 """
@@ -218,9 +164,10 @@ def patch_settings(code):
     if match:
         anchor = match.group(1)
         code = code.replace(anchor, f'{BUTTON}\n        {anchor}', 1)
-        print("OK Knopka WeryGram Premium dobavlena.")
+        print("OK Knopka dobavlena v nachalo nastroek.")
     else:
-        code = code.replace("switch (item.id) {", f"{BUTTON}\n        switch (item.id) {{", 1)
+        code = code.replace("switch (item.id) {",
+            f"{BUTTON}\n        switch (item.id) {{", 1)
         print("OK Knopka dobavlena rezervnym metodom.")
 
     CLICK = """\
@@ -229,7 +176,8 @@ case 9999: {
             break;
         }"""
     if "switch (item.id) {" in code:
-        code = code.replace("switch (item.id) {", f"switch (item.id) {{\n            {CLICK}", 1)
+        code = code.replace("switch (item.id) {",
+            f"switch (item.id) {{\n            {CLICK}", 1)
         print("OK Obrabotchik klika dobavlen.")
     return code
 
@@ -284,7 +232,7 @@ public TLRPC.User getUser(Long id) {
         return user;
     }"""
     if OLD in code:
-        print("OK MessagesController spatcherovan (exact match).")
+        print("OK MessagesController spatcherovan.")
         return code.replace(OLD, NEW, 1)
     patched = re.sub(
         r'public TLRPC\.User getUser\(Long\s+(\w+)\)\s*\{'
@@ -309,12 +257,12 @@ public TLRPC.User getUser(Long id) {
     if patched != code:
         print("OK MessagesController spatcherovan (regex).")
     else:
-        print("WARN getUser() ne najden — propuskaem.")
+        print("WARN getUser() ne najden.")
     return patched
 
 
 def run():
-    print("WeryGram Premium Patcher v3.0\n")
+    print("WeryGram Premium Patcher v4.0\n")
     if not os.path.exists(SETTINGS_PATH):
         print(f"ERROR: {SETTINGS_PATH} ne najden")
         sys.exit(1)
@@ -351,11 +299,11 @@ def run():
         out = os.path.join(ui_dir, "WeryGramPremiumActivity.java")
         with open(out, "w", encoding="utf-8") as f:
             f.write(PREMIUM_ACTIVITY)
-        print(f"OK WeryGramPremiumActivity.java -> {out}")
+        print(f"OK -> {out}")
 
     print("\nVSE MODULI USPESHNO MODIFICIROVANY!")
 
 
 if __name__ == "__main__":
     run()
-                                                                  
+    
