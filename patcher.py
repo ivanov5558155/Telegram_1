@@ -51,9 +51,12 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.UserConfig;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
@@ -68,6 +71,11 @@ public class WeryGramPremiumActivity extends BaseFragment {
         LinearLayout root = new LinearLayout(context);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+
+        final SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+        final int account = currentAccount;
+
+        // ── Visual Premium toggle ────────────────────────────────────────────
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setPadding(AndroidUtilities.dp(16),AndroidUtilities.dp(14),AndroidUtilities.dp(16),AndroidUtilities.dp(14));
@@ -90,7 +98,6 @@ public class WeryGramPremiumActivity extends BaseFragment {
         LinearLayout.LayoutParams dp2 = new LinearLayout.LayoutParams(AndroidUtilities.dp(1), AndroidUtilities.dp(40));
         dp2.setMargins(AndroidUtilities.dp(12),0,AndroidUtilities.dp(12),0);
         div.setLayoutParams(dp2);
-        final SharedPreferences prefs = MessagesController.getGlobalMainSettings();
         Switch toggle = new Switch(context);
         toggle.setChecked(prefs.getBoolean("wery_visual_premium", false));
         toggle.setOnCheckedChangeListener((btn, checked) -> {
@@ -101,6 +108,55 @@ public class WeryGramPremiumActivity extends BaseFragment {
         row.addView(div);
         row.addView(toggle);
         root.addView(row);
+
+        // ── Divider ──────────────────────────────────────────────────────────
+        android.view.View divider = new android.view.View(context);
+        divider.setBackgroundColor(Theme.getColor(Theme.key_divider));
+        divider.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        root.addView(divider);
+
+        // ── Save emoji button ────────────────────────────────────────────────
+        TextView saveEmoji = new TextView(context);
+        saveEmoji.setText("\uD83D\uDCBE \u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0438\u0439 emoji");
+        saveEmoji.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+        saveEmoji.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText4));
+        saveEmoji.setPadding(AndroidUtilities.dp(16),AndroidUtilities.dp(14),AndroidUtilities.dp(16),AndroidUtilities.dp(14));
+        saveEmoji.setOnClickListener(v -> {
+            TLRPC.User u = UserConfig.getInstance(account).getCurrentUser();
+            if (u != null && u.emoji_status != null) {
+                long eid = 0;
+                if (u.emoji_status instanceof TLRPC.TL_emojiStatus) {
+                    eid = ((TLRPC.TL_emojiStatus) u.emoji_status).document_id;
+                } else if (u.emoji_status instanceof TLRPC.TL_emojiStatusUntil) {
+                    eid = ((TLRPC.TL_emojiStatusUntil) u.emoji_status).document_id;
+                }
+                if (eid != 0) {
+                    prefs.edit().putLong("wery_emoji_id", eid).apply();
+                    Toast.makeText(context, "Emoji \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d!", android.widget.Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(context, "\u041d\u0435\u0442 emoji \u0434\u043b\u044f \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f", android.widget.Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+        root.addView(saveEmoji);
+
+        // ── Clear emoji button ───────────────────────────────────────────────
+        android.view.View divider2 = new android.view.View(context);
+        divider2.setBackgroundColor(Theme.getColor(Theme.key_divider));
+        divider2.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        root.addView(divider2);
+
+        TextView clearEmoji = new TextView(context);
+        clearEmoji.setText("\u274C \u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c emoji");
+        clearEmoji.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16);
+        clearEmoji.setTextColor(0xFFCC0000);
+        clearEmoji.setPadding(AndroidUtilities.dp(16),AndroidUtilities.dp(14),AndroidUtilities.dp(16),AndroidUtilities.dp(14));
+        clearEmoji.setOnClickListener(v -> {
+            prefs.edit().remove("wery_emoji_id").apply();
+            Toast.makeText(context, "Emoji \u0441\u0431\u0440\u043e\u0448\u0435\u043d", android.widget.Toast.LENGTH_SHORT).show();
+        });
+        root.addView(clearEmoji);
+
         fragmentView = root;
         return fragmentView;
     }
@@ -112,42 +168,50 @@ def patch_user_config(errors):
     if not uc:
         print("✘ UserConfig.java not found", file=sys.stderr)
         return errors + 1
-
     text = read(uc)
     if 'wery_visual_premium' in text:
         print("↩ skip UserConfig"); return errors
-
-    if "public boolean isPremium() {" in text:
-        text = text.replace(
-            "public boolean isPremium() {",
-            "public boolean isPremium() {\n        if (org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean(\"wery_visual_premium\", false)) return true;"
-        )
-
     sig_pos = text.find("getCurrentUser()")
     if sig_pos == -1:
         print("✘ UserConfig: getCurrentUser() не найден", file=sys.stderr)
         return errors + 1
-
     ret_pos = text.find("return currentUser;", sig_pos)
     if ret_pos == -1:
         print("✘ UserConfig: return currentUser; не найден", file=sys.stderr)
         return errors + 1
-
     line_start = text.rfind('\n', 0, ret_pos) + 1
     indent = ''
     for ch in text[line_start:ret_pos]:
         if ch in (' ', '\t'): indent += ch
         else: break
-
     patch = (
-        f'{indent}if (currentUser != null) {{\n'
+        f'{indent}try {{\n'
         f'{indent}    android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings();\n'
-        f'{indent}    if (!__p.contains("wery_orig_prem")) __p.edit().putBoolean("wery_orig_prem", currentUser.premium).apply();\n'
-        f'{indent}    currentUser.premium = __p.getBoolean("wery_orig_prem", false) || __p.getBoolean("wery_visual_premium", false);\n'
-        f'{indent}}}\n'
+        f'{indent}    if (currentUser != null && __p.getBoolean("wery_visual_premium", false)) {{\n'
+        f'{indent}        currentUser.premium = true;\n'
+        f'{indent}        boolean __hasEmoji = false;\n'
+        f'{indent}        long __curEid = 0;\n'
+        f'{indent}        if (currentUser.emoji_status instanceof org.telegram.tgnet.TLRPC.TL_emojiStatus) {{\n'
+        f'{indent}            __curEid = ((org.telegram.tgnet.TLRPC.TL_emojiStatus) currentUser.emoji_status).document_id;\n'
+        f'{indent}            __hasEmoji = __curEid != 0;\n'
+        f'{indent}        }} else if (currentUser.emoji_status instanceof org.telegram.tgnet.TLRPC.TL_emojiStatusUntil) {{\n'
+        f'{indent}            __curEid = ((org.telegram.tgnet.TLRPC.TL_emojiStatusUntil) currentUser.emoji_status).document_id;\n'
+        f'{indent}            __hasEmoji = __curEid != 0;\n'
+        f'{indent}        }}\n'
+        f'{indent}        if (__hasEmoji && __curEid != __p.getLong("wery_emoji_id", 0)) {{\n'
+        f'{indent}            __p.edit().putLong("wery_emoji_id", __curEid).apply();\n'
+        f'{indent}        }} else if (!__hasEmoji) {{\n'
+        f'{indent}            long __savedEid = __p.getLong("wery_emoji_id", 0);\n'
+        f'{indent}            if (__savedEid != 0) {{\n'
+        f'{indent}                org.telegram.tgnet.TLRPC.TL_emojiStatus __es = new org.telegram.tgnet.TLRPC.TL_emojiStatus();\n'
+        f'{indent}                __es.document_id = __savedEid;\n'
+        f'{indent}                currentUser.emoji_status = __es;\n'
+        f'{indent}            }}\n'
+        f'{indent}        }}\n'
+        f'{indent}    }}\n'
+        f'{indent}}} catch (Exception __e) {{}}\n'
         f'{indent}'
     )
-
     new_text = text[:ret_pos] + patch + text[ret_pos:]
     write(uc, new_text)
     return errors
@@ -157,33 +221,26 @@ def patch_messages_controller(errors):
     if not mc:
         print("✘ MessagesController.java not found", file=sys.stderr)
         return errors + 1
-
     text = read(mc)
     if 'wery_visual_premium' in text:
         print("↩ skip MessagesController"); return errors
-
-    # Ищем сигнатуру метода получения юзера из глобального кэша приложения
     variants = [
         "public TLRPC.User getUser(Long id) {",
         "public TLRPC.User getUser(Long uid) {",
-        "public TLRPC.User getUser(Long javaLong) {"
+        "public TLRPC.User getUser(Long javaLong) {",
     ]
-    
     marker = next((v for v in variants if v in text), None)
     if not marker:
-        print("✘ MessagesController: метод getUser(Long) не найден", file=sys.stderr)
+        print("✘ MessagesController: getUser(Long) не найден", file=sys.stderr)
         return errors + 1
-
-    var_name = "id" if "id)" in marker else ("uid" if "uid)" in marker else "javaLong")
-    
-    # Хук: перехватываем возврат текущего юзера и жестко фиксируем ему премиум локально
+    var_name = "id" if "Long id)" in marker else ("uid" if "Long uid)" in marker else "javaLong")
     insertion = (
-        f"        if (org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean(\"wery_visual_premium\", false)) {{\n"
+        f"        if ({var_name} != null && {var_name} == (long) UserConfig.getInstance(currentAccount).getClientUserId()\n"
+        f"            && org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean(\"wery_visual_premium\", false)) {{\n"
         f"            org.telegram.tgnet.TLRPC.User __u = users.get({var_name});\n"
         f"            if (__u != null) __u.premium = true;\n"
         f"        }}"
     )
-    
     write(mc, text.replace(marker, marker + "\n" + insertion, 1))
     return errors
 
@@ -191,11 +248,9 @@ def main():
     print("▶ WeryGram patcher\n")
     errors = 0
 
-    # Защита ядра конфигурации и кэша контроллера сообщений
     errors = patch_user_config(errors)
     errors = patch_messages_controller(errors)
 
-    # SettingsActivity
     sa = find_file("SettingsActivity.java")
     if not sa: print("✘ SettingsActivity.java not found", file=sys.stderr); sys.exit(1)
 
@@ -251,4 +306,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
