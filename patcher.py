@@ -150,6 +150,8 @@ def patch_user_config():
     if ret_pos == -1: return False
     
     indent = text[text.rfind('\n', 0, ret_pos)+1:ret_pos]
+    # FIX: use TLRPC.PeerColor instead of TLRPC.TL_peerColor —
+    # profile_color / color fields are typed as PeerColor in this TG version
     patch = (
         f'{indent}try {{\n'
         f'{indent}    android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings();\n'
@@ -160,7 +162,7 @@ def patch_user_config():
         f'{indent}            if (__curEid != 0) __p.edit().putLong("wery_emoji_id", __curEid).apply();\n'
         f'{indent}            else {{ long __s = __p.getLong("wery_emoji_id", 0); if (__s != 0) ((org.telegram.tgnet.TLRPC.TL_emojiStatus) currentUser.emoji_status).document_id = __s; }}\n'
         f'{indent}        }} else {{ long __s = __p.getLong("wery_emoji_id", 0); if (__s != 0) {{ org.telegram.tgnet.TLRPC.TL_emojiStatus __es = new org.telegram.tgnet.TLRPC.TL_emojiStatus(); __es.document_id = __s; currentUser.emoji_status = __es; }} }}\n'
-        f'{indent}        for (org.telegram.tgnet.TLRPC.TL_peerColor __c : new org.telegram.tgnet.TLRPC.TL_peerColor[]{{currentUser.profile_color, currentUser.color}}) {{\n'
+        f'{indent}        for (org.telegram.tgnet.TLRPC.PeerColor __c : new org.telegram.tgnet.TLRPC.PeerColor[]{{currentUser.profile_color, currentUser.color}}) {{\n'
         f'{indent}            String __k = __c == currentUser.profile_color ? "wery_p" : "wery_";\n'
         f'{indent}            if (__c != null) {{ if (__c.color >= 0 || __c.background_emoji_id != 0) __p.edit().putInt(__k+"color_id", __c.color).putLong(__k+"color_emoji", __c.background_emoji_id).apply(); else {{ int __id = __p.getInt(__k+"color_id", -1); long __em = __p.getLong(__k+"color_emoji", 0); if (__id >= 0) __c.color = __id; if (__em != 0) __c.background_emoji_id = __em; }} }}\n'
         f'{indent}        }}\n'
@@ -183,10 +185,12 @@ def patch_messages_controller():
         for v in ["public TLRPC.User getUser(Long id) {", "public TLRPC.User getUser(Long uid) {", "public TLRPC.User getUser(Long javaLong) {"]:
             if v in text:
                 vn = "id" if "id)" in v else ("uid" if "uid)" in v else "javaLong")
+                # FIX: use TLRPC.PeerColor instead of TLRPC.TL_peerColor —
+                # user.profile_color / user.color are typed as PeerColor in this TG version
                 ins = (
                     f"        if ({vn} != null && org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean(\"wery_visual_premium\", false) && {vn}.longValue() == org.telegram.messenger.UserConfig.getInstance(currentAccount).getClientUserId()) {{\n"
                     f"            org.telegram.tgnet.TLRPC.User __u = users.get({vn});\n"
-                    f"            if (__u != null && !__u.bot) {{ __u.premium = true; try {{ android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings(); if (__u.emoji_status instanceof org.telegram.tgnet.TLRPC.TL_emojiStatus) {{ long __e = ((org.telegram.tgnet.TLRPC.TL_emojiStatus) __u.emoji_status).document_id; if (__e != 0) __p.edit().putLong(\"wery_emoji_id\", __e).apply(); else {{ long __s = __p.getLong(\"wery_emoji_id\", 0); if (__s != 0) ((org.telegram.tgnet.TLRPC.TL_emojiStatus) __u.emoji_status).document_id = __s; }} }} for (org.telegram.tgnet.TLRPC.TL_peerColor __c : new org.telegram.tgnet.TLRPC.TL_peerColor[]{{__u.profile_color, __u.color}}) {{ String __k = __c == __u.profile_color ? \"wery_p\" : \"wery_\"; if (__c != null) {{ if (__c.color >= 0 || __c.background_emoji_id != 0) __p.edit().putInt(__k+\"color_id\", __c.color).putLong(__k+\"color_emoji\", __c.background_emoji_id).apply(); else {{ int __id = __p.getInt(__k+\"color_id\", -1); long __em = __p.getLong(__k+\"color_emoji\", 0); if (__id >= 0) __c.color = __id; if (__em != 0) __c.background_emoji_id = __em; }} }} }} }} catch(Exception __e){{}} }}\n"
+                    f"            if (__u != null && !__u.bot) {{ __u.premium = true; try {{ android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings(); if (__u.emoji_status instanceof org.telegram.tgnet.TLRPC.TL_emojiStatus) {{ long __e = ((org.telegram.tgnet.TLRPC.TL_emojiStatus) __u.emoji_status).document_id; if (__e != 0) __p.edit().putLong(\"wery_emoji_id\", __e).apply(); else {{ long __s = __p.getLong(\"wery_emoji_id\", 0); if (__s != 0) ((org.telegram.tgnet.TLRPC.TL_emojiStatus) __u.emoji_status).document_id = __s; }} }} for (org.telegram.tgnet.TLRPC.PeerColor __c : new org.telegram.tgnet.TLRPC.PeerColor[]{{__u.profile_color, __u.color}}) {{ String __k = __c == __u.profile_color ? \"wery_p\" : \"wery_\"; if (__c != null) {{ if (__c.color >= 0 || __c.background_emoji_id != 0) __p.edit().putInt(__k+\"color_id\", __c.color).putLong(__k+\"color_emoji\", __c.background_emoji_id).apply(); else {{ int __id = __p.getInt(__k+\"color_id\", -1); long __em = __p.getLong(__k+\"color_emoji\", 0); if (__id >= 0) __c.color = __id; if (__em != 0) __c.background_emoji_id = __em; }} }} }} }} catch(Exception __e){{}} }}\n"
                     f"        }} //wery_visual_premium_controller"
                 )
                 text = text.replace(v, v + "\n" + ins, 1); modified = True; break
