@@ -128,7 +128,7 @@ public class WeryGramGifts {
         } catch (Exception e) { FileLog.e(e); }
     }
 
-    // ── Deleted gifts ──────────────────────────────────────────────────────────
+    // ── Deleted gifts ─────────────────────────────────────────────────────────
     public static void injectDeletedGifts(int account) {
         if (!MessagesController.getGlobalMainSettings().getBoolean("wery_deleted_gifts", false)) return;
         new Thread(() -> {
@@ -414,7 +414,7 @@ def patch_user_config(errors):
         if ch in (' ','\t'): indent += ch
         else: break
 
-   patch = (
+    patch = (
         indent + 'try {\n' +
         indent + '    android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings();\n' +
         indent + '    if (currentUser != null && __p.getBoolean("wery_visual_premium", false)) {\n' +
@@ -517,7 +517,7 @@ def patch_stars_controller(errors):
     if 'wery_deleted_gifts' in text: print("↩ skip StarsController"); return errors
     m = next((x for x in ["giftsLoaded = true;","this.giftsLoaded = true;"] if x in text), None)
     if m:
-        injection = m + '\n        if(org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_deleted_gifts",false)){org.telegram.ui.WeryGramGifts.reset();org.telegram.ui.WeryGramGifts.injectDeletedGifts(currentAccount);} //wery_deleted_gifts'
+        injection = m + '\n        if(org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_deleted_gifts",false)){org.telegram.ui.WeryGramGifts.reset();org.telegram.ui.WeryGramGifts.injectDeletedGifts(accountInstance.getAccount());}'
         write(sc, text.replace(m, injection))
         print("✔ StarsController: deleted gifts patch")
     else:
