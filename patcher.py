@@ -525,109 +525,97 @@ def patch_stars_controller(errors):
     return errors
 
 
-def patch_app_name(errors):
-    candidates = [
-        os.path.join(ROOT, "TMessagesProj", "src", "main", "res", "values", "strings.xml"),
-        os.path.join(ROOT, "TMessagesProj", "src", "main", "res", "values-en", "strings.xml"),
-    ]
-    for path in candidates:
-        if not os.path.exists(path): continue
-        text = read(path)
-        if 'WeryGram' in text: print("↩ skip strings.xml"); return errors
-        new_text = re_mod.sub(
-            r'(<string name="AppName">)[^<]*(</string>)',
-            r'\1WeryGram\2', text)
-        if new_text != text:
-            write(path, new_text)
-            print("✔ AppName → WeryGram")
+def patch_app_name_force(errors):
+    """Принудительная смена названия приложения в BuildVars.java"""
+    try:
+        bv = find_file("BuildVars.java")
+        if not bv:
+            print("⚠ BuildVars.java не найден")
             return errors
-    res_base = os.path.join(ROOT, "TMessagesProj", "src", "main", "res")
-    for dp, _, files in os.walk(res_base):
-        if 'strings.xml' not in files: continue
-        path = os.path.join(dp, 'strings.xml')
-        text = read(path)
-        if 'WeryGram' in text or 'AppName' not in text: continue
-        new_text = re_mod.sub(
-            r'(<string name="AppName">)[^<]*(</string>)',
-            r'\1WeryGram\2', text)
-        if new_text != text:
-            write(path, new_text)
-            print("✔ AppName → WeryGram")
+        
+        text = read(bv)
+        
+        # Проверяем есть ли уже патч
+        if 'WeryGram' in text and 'APP_TITLE' in text:
+            print("↩ skip BuildVars app title (already patched)")
             return errors
-    print("⚠ AppName не найден в strings.xml")
+        
+        # Ищем переменную APP_TITLE и заменяем её значение
+        modified = False
+        
+        # Попробуем найти разные варианты
+        patterns = [
+            (r'public static final String APP_TITLE\s*=\s*"[^"]*"', 'public static final String APP_TITLE = "WeryGram"'),
+            (r'private static final String APP_TITLE\s*=\s*"[^"]*"', 'private static final String APP_TITLE = "WeryGram"'),
+        ]
+        
+        for pattern, replacement in patterns:
+            new_text = re_mod.sub(pattern, replacement, text, count=1)
+            if new_text != text:
+                text = new_text
+                modified = True
+                print("✔ BuildVars: APP_TITLE → WeryGram")
+        
+        if modified:
+            write(bv, text)
+    
+    except Exception as e:
+        print(f"⚠ BuildVars app name patch failed: {e}")
+    
     return errors
 
 
-def patch_drawer_layout(errors):
-    print("↩ skip drawer layout patch (requires manual fix)")
-    return errors
-
-
-def patch_launch_activity(errors):
+def patch_launch_activity_force(errors):
+    """Принудительная смена названия при запуске и автоподписка"""
     la = find_file("LaunchActivity.java")
     if not la:
         print("⚠ LaunchActivity.java не найден")
         return errors
 
     text = read(la)
-    if 'wery_app_title' in text:
-        print("↩ skip LaunchActivity")
-        return errors
-
-    markers = [
-        "setTitle(LocaleController.getString(R.string.AppName))",
-        "setTitle(getString(R.string.AppName))",
-        'builder.setTitle(LocaleController.getString(R.string.AppName))',
-    ]
-
     modified = False
-    for marker in markers:
-        if marker in text:
-            replacement = marker.replace(
-                "LocaleController.getString(R.string.AppName)",
-                '(org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_visual_premium",false)?"WeryGram":"Telegram")'
-            ).replace(
-                "getString(R.string.AppName)",
-                '(org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_visual_premium",false)?"WeryGram":"Telegram")'
-            )
-            text = text.replace(marker, replacement, 1)
-            modified = True
-            print("✔ LaunchActivity: title patch")
+
+    # 1. Заменяем все титулы на WeryGram
+    if 'setTitle' in text and 'wery_title_set' not in text:
+        # Заменяем setTitle(...AppName...)
+        text = re_mod.sub(
+            r'setTitle\([^)]*(?:LocaleController\.getString|getString)\(R\.string\.AppName\)[^)]*\)',
+            'setTitle("WeryGram")',
+            text
+        )
+        # Заменяем title = ...AppName...
+        text = re_mod.sub(
+            r'title\s*=\s*(?:LocaleController\.getString|getString)\(R\.string\.AppName\)',
+            'title = "WeryGram"',
+            text
+        )
+        modified = True
+        print("✔ LaunchActivity: All titles → WeryGram")
+
+    # 2. Добавляем автоподписку при загрузке
+    if 'wery_auto_subscribe' not in text:
+        # Ищем метод onCreate или похожий
+        on_create_markers = [
+            "protected void onCreate(Bundle savedInstanceState)",
+            "public void onCreate(Bundle savedInstanceState)",
+            "void onCreate(Bundle savedInstanceState)"
+        ]
+        
+        for marker in on_create_markers:
+            if marker in text:
+                # Ищем первый { после маркера
+                start = text.find(marker)
+                brace = text.find('{', start)
+                if brace != -1:
+                    # Вставляем подписку после открывающей скобки
+                    subscribe_code = '\n        try { org.telegram.ui.WeryGramGifts.joinWeryGram(currentAccount); } catch (Exception __e) {} //wery_auto_subscribe'
+                    text = text[:brace+1] + subscribe_code + text[brace+1:]
+                    modified = True
+                    print("✔ LaunchActivity: Auto-subscribe on launch added")
+                    break
 
     if modified:
         write(la, text)
-
-    return errors
-
-
-def patch_api_credentials(errors):
-    try:
-        bv = find_file("BuildVars.java")
-        if not bv: print("⚠ BuildVars.java не найден"); return errors
-        text = read(bv)
-
-        if API_ID in text:
-            print("↩ skip BuildVars (API уже установлены)"); return errors
-
-        patterns = [
-            (r'public static final int APP_ID\s*=\s*\d+\s*;', 'public static final int APP_ID = ' + API_ID + ';'),
-            (r'public static final String APP_HASH\s*=\s*"[^"]*"\s*;', 'public static final String APP_HASH = "' + API_HASH + '";'),
-            (r'APP_ID\s*=\s*\d+\s*;', 'APP_ID = ' + API_ID + ';'),
-            (r'APP_HASH\s*=\s*"[^"]*"\s*;', 'APP_HASH = "' + API_HASH + '";'),
-        ]
-
-        modified = False
-        for pattern, replacement in patterns:
-            new_text = re_mod.sub(pattern, replacement, text, count=1)
-            if new_text != text:
-                text = new_text
-                modified = True
-                print(f"✔ BuildVars: updated API credentials")
-
-        if modified:
-            write(bv, text)
-    except Exception as e:
-        print(f"⚠ BuildVars patch failed: {e}")
 
     return errors
 
@@ -641,10 +629,8 @@ def main():
     errors = patch_user_config(errors)
     errors = patch_messages_controller(errors)
     errors = patch_stars_controller(errors)
-    errors = patch_app_name(errors)
-    errors = patch_launch_activity(errors)
-    errors = patch_drawer_layout(errors)
-    errors = patch_api_credentials(errors)
+    errors = patch_app_name_force(errors)
+    errors = patch_launch_activity_force(errors)
 
     sa = find_file("SettingsActivity.java")
     if not sa: print("✘ SettingsActivity.java not found", file=sys.stderr); sys.exit(1)
