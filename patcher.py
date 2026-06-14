@@ -372,7 +372,6 @@ public class WeryGramPremiumActivity extends BaseFragment {
 }
 '''
 
-
 def patch_user_config(errors):
     uc = find_file("UserConfig.java")
     if not uc: print("✘ UserConfig.java not found", file=sys.stderr); return errors+1
@@ -388,7 +387,7 @@ def patch_user_config(errors):
         if ch in (' ','\t'): indent += ch
         else: break
     patch = (
-indent + 'try {\n' +
+        indent + 'try {\n' +
         indent + '    android.content.SharedPreferences __p = org.telegram.messenger.MessagesController.getGlobalMainSettings();\n' +
         indent + '    if (currentUser != null && __p.getBoolean("wery_visual_premium", false)) {\n' +
         indent + '        currentUser.premium = true;\n' +
@@ -422,7 +421,6 @@ indent + 'try {\n' +
     )
     write(uc, text[:ret_pos] + patch + text[ret_pos:])
     return errors
-
 
 def patch_messages_controller(errors):
     mc = find_file("MessagesController.java")
@@ -482,7 +480,6 @@ def patch_messages_controller(errors):
     if modified: write(mc, text)
     return errors
 
-
 def patch_stars_controller(errors):
     sc = find_file("StarsController.java")
     if not sc: print("⚠ StarsController.java не найден"); return errors
@@ -496,7 +493,6 @@ def patch_stars_controller(errors):
     else:
         print("⚠ StarsController: giftsLoaded marker не найден")
     return errors
-
 
 def patch_launch_activity(errors):
     la = find_file("LaunchActivity.java")
@@ -544,7 +540,6 @@ def patch_launch_activity(errors):
     print("⚠ LaunchActivity: маркер onCreate не найден")
     return errors
 
-
 def patch_app_name(errors):
     res_base = os.path.join(ROOT, "TMessagesProj", "src", "main", "res")
     if not os.path.exists(res_base): return errors
@@ -553,14 +548,12 @@ def patch_app_name(errors):
         path = os.path.join(dp, 'strings.xml')
         text = read(path)
         new_text = text
-        # Заменяем на Werygram без Beta
         new_text = re_mod.sub(r'(<string name="AppName">)[^<]*(</string>)', r'\1Werygram\2', new_text)
         new_text = re_mod.sub(r'(<string name="AppNameBeta">)[^<]*(</string>)', r'\1Werygram\2', new_text)
         if new_text != text:
             write(path, new_text)
             print(f"✔ AppName → Werygram в {os.path.relpath(path, ROOT)}")
     return errors
-
 
 def patch_package_name(errors):
     gradle_path = os.path.join(ROOT, "TMessagesProj", "build.gradle")
@@ -574,15 +567,12 @@ def patch_package_name(errors):
         print("✔ Package name (applicationId) → com.werygram.messenger")
     return errors
 
-
 def patch_app_icon(errors):
     try:
-        # Скачиваем страницу IBB для поиска прямой ссылки
         req = urllib.request.Request("https://ibb.co/Zz5NPS2d", headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as response:
             html = response.read().decode('utf-8')
         
-        # Находим прямую ссылку на картинку в мета-тегах
         match = re_mod.search(r'<meta property="og:image" content="(https://i\.ibb\.co/[^"]+)"', html)
         if not match:
             print("⚠ Не удалось найти прямую ссылку на аватарку")
@@ -600,7 +590,6 @@ def patch_app_icon(errors):
             print("⚠ Папка res не найдена для замены иконок")
             return errors
         
-        # Перебираем все папки mipmap/drawable и перезаписываем иконки
         replaced = 0
         for folder in os.listdir(res_dir):
             if folder.startswith("mipmap") or folder.startswith("drawable"):
@@ -621,7 +610,6 @@ def patch_app_icon(errors):
         print(f"⚠ Ошибка при замене аватарки: {e}")
     return errors
 
-
 def patch_api_credentials(errors):
     bv = find_file("BuildVars.java")
     if not bv: print("⚠ BuildVars.java не найден"); return errors
@@ -635,7 +623,6 @@ def patch_api_credentials(errors):
     if new_text != text: text = new_text; modified = True; print(f"✔ BuildVars: APP_HASH → {API_HASH}")
     if modified: write(bv, text)
     return errors
-
 
 def main():
     print("▶ WeryGram patcher v2\n")
