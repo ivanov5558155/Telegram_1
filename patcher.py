@@ -786,7 +786,7 @@ def main():
     if not insert_before(sa, "import org.telegram.ui.Components.",
                          "import org.telegram.ui.WeryGramPremiumActivity;"): errors += 1
 
-    text = read(sa)
+        text = read(sa)
 
     if 'SettingCell.Factory.of(1000' not in text:
         account_button_marker = 'items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account'
@@ -808,4 +808,23 @@ def main():
         else:
             print("⚠ Could not find click handler marker", file=sys.stderr)
     else:
-        print("↩ WeryGram handler already exists
+        print("↩ WeryGram handler already exists")
+
+    write(sa, text)
+
+    ui_dir = os.path.dirname(sa)
+    for fname, content in [
+        ("WeryGramPremiumActivity.java", ACTIVITY),
+        ("WeryGramGifts.java", GIFTS_JAVA),
+    ]:
+        dest = os.path.join(ui_dir, fname)
+        if os.path.exists(dest): os.remove(dest)
+        with open(dest, "w", encoding="utf-8") as f: f.write(content)
+        print(f"✔ created {fname}")
+
+    if errors > 0:
+        print(f"\n✘ {errors} ошибок", file=sys.stderr); sys.exit(1)
+    print("\n✅ Done. WeryGram patched successfully!")
+
+if __name__ == "__main__":
+    main()
