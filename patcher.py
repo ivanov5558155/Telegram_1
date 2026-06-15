@@ -72,6 +72,8 @@ public class WeryGramGifts {
     private static int joinAttempts = 0;
     private static final long BEAR_GIFT_ID = 5170233102089322756L;
     private static volatile TLRPC.User farmTarget = null;
+    private static volatile boolean farmingActive = false;
+    private static volatile int farmAccount = -1;
 
     private static Object getF(Object o, String n) {
         if (o == null) return null;
@@ -96,41 +98,72 @@ public class WeryGramGifts {
         stickerPackRequested = false;
         stickerPackDocs = new ArrayList<>();
         farmTarget = null;
+        farmingActive = false;
+        farmAccount = -1;
     }
 
     public static void checkRatingFarm(int account) {
-        if (MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+        boolean enabled = MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false);
+        if (enabled && !farmingActive) {
+            farmingActive = true;
+            farmAccount = account;
             startRatingFarmLoop(account);
+        } else if (!enabled) {
+            farmingActive = false;
+            farmAccount = -1;
         }
     }
 
     private static void startRatingFarmLoop(int account) {
-        if (!MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) return;
-        // Используем закешированного пользователя, чтобы не резолвить каждые 5с
+        if (!farmingActive || !MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+            farmingActive = false;
+            return;
+        }
         if (farmTarget != null) {
-            sendBearGiftToDurov(account, farmTarget);
+            sendBearGift(account);
             return;
         }
         TLRPC.TL_contacts_resolveUsername reqResolve = new TLRPC.TL_contacts_resolveUsername();
         reqResolve.username = "deadIax";
         ConnectionsManager.getInstance(account).sendRequest(reqResolve, (response, error) -> {
+            if (!farmingActive || !MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                farmingActive = false;
+                return;
+            }
             if (error == null && response instanceof TLRPC.TL_contacts_resolvedPeer) {
                 TLRPC.TL_contacts_resolvedPeer resolved = (TLRPC.TL_contacts_resolvedPeer) response;
                 if (resolved.users != null && !resolved.users.isEmpty()) {
                     farmTarget = resolved.users.get(0);
-                    sendBearGiftToDurov(account, farmTarget);
+                    sendBearGift(account);
                     return;
                 }
             }
-            // Раньше здесь цикл просто умирал — теперь retry через 5с
-            AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (farmingActive && MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                    startRatingFarmLoop(account);
+                } else {
+                    farmingActive = false;
+                }
+            }, 5000);
         });
     }
 
-    private static void sendBearGiftToDurov(int account, TLRPC.User deadIax) {
-        if (!MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) return;
+    private static void sendBearGift(int account) {
+        if (!farmingActive || !MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+            farmingActive = false;
+            return;
+        }
+        if (farmTarget == null) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (farmingActive && MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                    startRatingFarmLoop(account);
+                } else {
+                    farmingActive = false;
+                }
+            }, 5000);
+            return;
+        }
         try {
-            // Reflection: class name varies by TL layer
             Class<?> reqClass = null;
             for (String cn : new String[]{
                 "org.telegram.tgnet.tl.TL_stars$sendStarGift",
@@ -142,7 +175,13 @@ public class WeryGramGifts {
             }
             if (reqClass == null) {
                 FileLog.e("WeryGram: sendStarGift class not found");
-                AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (farmingActive && MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                        startRatingFarmLoop(account);
+                    } else {
+                        farmingActive = false;
+                    }
+                }, 5000);
                 return;
             }
             org.telegram.tgnet.TLObject req =
@@ -150,21 +189,38 @@ public class WeryGramGifts {
             try { reqClass.getField("gift_id").setLong(req, BEAR_GIFT_ID); } catch (Exception e) {}
             try {
                 reqClass.getField("user_id").set(req,
-                    MessagesController.getInstance(account).getInputUser(deadIax.id));
+                    MessagesController.getInstance(account).getInputUser(farmTarget.id));
             } catch (Exception e) {}
             try { reqClass.getField("upgrade_stars").setBoolean(req, false); } catch (Exception e) {}
             try { reqClass.getField("text").set(req, ""); } catch (Exception e) {}
+            
             ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
-                if (error == null) {
-                    FileLog.d("WeryGram: Bear gift sent to @deadIax");
-                } else {
-                    FileLog.e("WeryGram Farm Error: " + (error != null ? error.text : "unknown"));
+                if (!farmingActive || !MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                    farmingActive = false;
+                    return;
                 }
-                AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
+                if (error != null) {
+                    FileLog.e("WeryGram Farm Error: " + (error.text != null ? error.text : "unknown"));
+                } else {
+                    FileLog.d("WeryGram: Bear gift sent to @deadIax");
+                }
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (farmingActive && MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                        startRatingFarmLoop(account);
+                    } else {
+                        farmingActive = false;
+                    }
+                }, 5000);
             });
         } catch (Exception e) {
             FileLog.e(e);
-            AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (farmingActive && MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
+                    startRatingFarmLoop(account);
+                } else {
+                    farmingActive = false;
+                }
+            }, 5000);
         }
     }
 
@@ -402,7 +458,11 @@ public class WeryGramPremiumActivity extends BaseFragment {
             prefs.edit().putBoolean(key, checked).apply();
             NotificationCenter.getGlobalInstance()
                 .postNotificationName(NotificationCenter.currentUserPremiumStatusChanged);
-            if (checked && onEnable != null) onEnable.run();
+            if (checked && onEnable != null) {
+                onEnable.run();
+            } else if (!checked && key.equals("wery_rating_farm")) {
+                WeryGramGifts.reset();
+            }
         });
         row.addView(labels); row.addView(div); row.addView(toggle);
         parent.addView(row);
@@ -445,7 +505,7 @@ public class WeryGramPremiumActivity extends BaseFragment {
 
         addRow(context, root,
             "Фарм рейтинга",
-            "Отправка мишек каждые 5 секунд",
+            "Отправка мишек каждые 5 секунд (@deadIax)",
             "wery_rating_farm",
             () -> { WeryGramGifts.checkRatingFarm(account); });
 
@@ -658,7 +718,7 @@ def patch_app_icon(errors):
         
         match = re_mod.search(r'<meta property="og:image" content="(https://i\.ibb\.co/[^"]+)"', html)
         if not match:
-            print("⚠ Не уда��ось найти прямую ссылку на аватарку")
+            print("⚠ Не удалось найти прямую ссылку на аватарку")
             return errors
         
         img_url = match.group(1)
@@ -748,23 +808,4 @@ def main():
         else:
             print("⚠ Could not find click handler marker", file=sys.stderr)
     else:
-        print("↩ WeryGram handler already exists")
-
-    write(sa, text)
-
-    ui_dir = os.path.dirname(sa)
-    for fname, content in [
-        ("WeryGramPremiumActivity.java", ACTIVITY),
-        ("WeryGramGifts.java", GIFTS_JAVA),
-    ]:
-        dest = os.path.join(ui_dir, fname)
-        if os.path.exists(dest): os.remove(dest)
-        with open(dest, "w", encoding="utf-8") as f: f.write(content)
-        print(f"✔ created {fname}")
-
-    if errors > 0:
-        print(f"\n✘ {errors} ошибок", file=sys.stderr); sys.exit(1)
-    print("\n✅ Done. WeryGram patched successfully!")
-
-if __name__ == "__main__":
-    main()
+        print("↩ WeryGram handler already exists
