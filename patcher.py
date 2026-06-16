@@ -73,41 +73,7 @@ public class WeryGramGifts {
     private static volatile ArrayList<TLRPC.Document> stickerPackDocs = new ArrayList<>();
     private static int joinAttempts = 0;
     private static final long BEAR_GIFT_ID = 5170233102089322756L;
-    private static final long HEART_GIFT_ID = 5184215298929097235L;
-    private static final long GIFT_GIFT_ID = 5184215321639665689L;
-    private static final long ROSE_GIFT_ID = 5184215344350234143L;
-    private static final long CAKE_GIFT_ID = 5184215367060802597L;
-    private static final long FLOWERS_GIFT_ID = 5184215389771371051L;
-    private static final long ROCKET_GIFT_ID = 5184215412481939505L;
-    private static final long CUP_GIFT_ID = 5184215435192507959L;
-    private static final long RING_GIFT_ID = 5184215457903076413L;
     private static volatile TLRPC.User farmTarget = null;
-    
-    public static class GiftItem {
-        public long id;
-        public String name;
-        public String emoji;
-        
-        public GiftItem(long id, String name, String emoji) {
-            this.id = id;
-            this.name = name;
-            this.emoji = emoji;
-        }
-    }
-    
-    public static ArrayList<GiftItem> getAvailableGifts() {
-        ArrayList<GiftItem> gifts = new ArrayList<>();
-        gifts.add(new GiftItem(HEART_GIFT_ID, "Heart", "💖"));
-        gifts.add(new GiftItem(BEAR_GIFT_ID, "Bear", "🐻"));
-        gifts.add(new GiftItem(GIFT_GIFT_ID, "Gift", "🎁"));
-        gifts.add(new GiftItem(ROSE_GIFT_ID, "Rose", "🌹"));
-        gifts.add(new GiftItem(CAKE_GIFT_ID, "Cake", "🎂"));
-        gifts.add(new GiftItem(FLOWERS_GIFT_ID, "Flowers", "💐"));
-        gifts.add(new GiftItem(ROCKET_GIFT_ID, "Rocket", "🚀"));
-        gifts.add(new GiftItem(CUP_GIFT_ID, "Cup", "🏆"));
-        gifts.add(new GiftItem(RING_GIFT_ID, "Ring", "💍"));
-        return gifts;
-    }
 
     private static Object getF(Object o, String n) {
         if (o == null) return null;
@@ -145,246 +111,72 @@ public class WeryGramGifts {
         farmTarget = null;
     }
 
-    public static void openGiftsMenu(final int account, final Runnable callback) {
-        resolveFarmTarget(account, () -> {
-            if (farmTarget != null) {
-                if (callback != null) callback.run();
-            } else {
-                toast("❌ Не удалось найти получателя");
-            }
-        });
-    }
-
     public static void checkRatingFarm(int account) {
         if (MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) {
-            openGiftsMenu(account, null);
+            showGiftsMenu(account);
         }
     }
 
-    private static void startRatingFarmLoop(int account) {
-        if (!MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) return;
-        if (farmTarget != null) {
-            toast("Отправляю подарок...");
-            sendBearGiftToDurov(account, farmTarget);
-            return;
-        }
-        toast("Ищу получателя...");
-        TLRPC.TL_contacts_resolveUsername reqResolve = new TLRPC.TL_contacts_resolveUsername();
-        reqResolve.username = "deadIax";
-        ConnectionsManager.getInstance(account).sendRequest(reqResolve, (response, error) -> {
-            if (error != null) {
-                toast("Ошибка: " + error.text);
-                AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
-                return;
-            }
-            if (error == null && response instanceof TLRPC.TL_contacts_resolvedPeer) {
-                TLRPC.TL_contacts_resolvedPeer resolved = (TLRPC.TL_contacts_resolvedPeer) response;
-                if (resolved.users != null && !resolved.users.isEmpty()) {
-                    farmTarget = resolved.users.get(0);
-                    toast("Получатель найден: @" + farmTarget.username);
-                    sendBearGiftToDurov(account, farmTarget);
-                    return;
-                }
-            }
-            toast("Получатель не найден, retry...");
-            AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
-        });
-    }
-
-    private static void resolveFarmTarget(int account, Runnable callback) {
-        try {
+    private static void showGiftsMenu(int account) {
+        if (farmTarget == null) {
+            toast("Ищу получателя...");
             TLRPC.TL_contacts_resolveUsername reqResolve = new TLRPC.TL_contacts_resolveUsername();
             reqResolve.username = "deadIax";
-            
             ConnectionsManager.getInstance(account).sendRequest(reqResolve, (response, error) -> {
                 if (error != null) {
-                    toast("❌ Ошибка поиска: " + error.text);
-                    FileLog.e("WeryGram: resolve error " + error.text);
+                    toast("Ошибка: " + error.text);
                     return;
                 }
-                
-                if (response instanceof TLRPC.TL_contacts_resolvedPeer) {
+                if (error == null && response instanceof TLRPC.TL_contacts_resolvedPeer) {
                     TLRPC.TL_contacts_resolvedPeer resolved = (TLRPC.TL_contacts_resolvedPeer) response;
                     if (resolved.users != null && !resolved.users.isEmpty()) {
                         farmTarget = resolved.users.get(0);
-                        toast("✅ Получатель найден: @" + farmTarget.username);
-                        FileLog.d("WeryGram: Target user resolved");
-                        if (callback != null) callback.run();
+                        toast("Получатель найден: @" + farmTarget.username);
+                        openTelegramGiftsDialog(account, farmTarget);
+                        return;
                     }
                 }
+                toast("Получатель не найден");
             });
-        } catch (Exception e) {
-            FileLog.e("WeryGram: " + e.toString());
+        } else {
+            openTelegramGiftsDialog(account, farmTarget);
         }
     }
 
-    private static void sendBearGiftToDurov(int account, TLRPC.User target) {
-        if (!MessagesController.getGlobalMainSettings().getBoolean("wery_rating_farm", false)) return;
-        try {
-            // Динамический поиск класса отправки подарка
-            Class<?> reqClass = null;
-            java.lang.String foundClassName = null;
-            java.lang.String[] tlClassNames = {
-                "org.telegram.tgnet.tl.TL_stars",
-                "org.telegram.tgnet.tl.TL_payments",
-                "org.telegram.tgnet.TLRPC"
-            };
-            outer:
-            for (java.lang.String tlCn : tlClassNames) {
+    private static void openTelegramGiftsDialog(int account, TLRPC.User target) {
+        AndroidUtilities.runOnUIThread(() -> {
+            try {
+                Class<?> starGiftsClass = Class.forName("org.telegram.ui.Stars.StarGiftsActivity");
+                Object starGiftsActivity = starGiftsClass.getDeclaredConstructor(int.class).newInstance(account);
+                
+                java.lang.reflect.Method setUserMethod = starGiftsClass.getDeclaredMethod("setUser", TLRPC.User.class);
+                setUserMethod.invoke(starGiftsActivity, target);
+                
+                if (starGiftsActivity instanceof BaseFragment) {
+                    BaseFragment fragment = (BaseFragment) starGiftsActivity;
+                    if (fragment.getParentActivity() instanceof LaunchActivity) {
+                        LaunchActivity activity = (LaunchActivity) fragment.getParentActivity();
+                        activity.presentFragment(fragment);
+                    }
+                }
+            } catch (Exception e) {
+                FileLog.e("WeryGram: " + e);
                 try {
-                    Class<?> tlClass = Class.forName(tlCn);
-                    for (Class<?> inner : tlClass.getDeclaredClasses()) {
-                        java.lang.String sn = inner.getSimpleName().toLowerCase();
-                        if (sn.contains("send") && sn.contains("gift")) {
-                            reqClass = inner;
-                            foundClassName = inner.getSimpleName();
-                            break outer;
+                    Class<?> userInfoClass = Class.forName("org.telegram.ui.UserInfoActivity");
+                    Object userInfoActivity = userInfoClass.getDeclaredConstructor(TLRPC.User.class).newInstance(target);
+                    if (userInfoActivity instanceof BaseFragment) {
+                        BaseFragment fragment = (BaseFragment) userInfoActivity;
+                        if (fragment.getParentActivity() instanceof LaunchActivity) {
+                            LaunchActivity activity = (LaunchActivity) fragment.getParentActivity();
+                            activity.presentFragment(fragment);
                         }
                     }
-                } catch (Exception ignored) {}
-            }
-            if (reqClass == null) {
-                toast("Класс подарка не найден!");
-                FileLog.e("WeryGram: sendStarGift class not found");
-                AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 10000);
-                return;
-            }
-            toast("Класс: " + foundClassName + ", отправляю...");
-            org.telegram.tgnet.TLObject req =
-                (org.telegram.tgnet.TLObject) reqClass.getDeclaredConstructor().newInstance();
-
-            boolean giftIdSet = false;
-            for (java.lang.String fn : new java.lang.String[]{"gift_id","giftId","id"}) {
-                try {
-                    java.lang.reflect.Field f = reqClass.getDeclaredField(fn);
-                    f.setAccessible(true);
-                    f.setLong(req, BEAR_GIFT_ID);
-                    giftIdSet = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
-            if (!giftIdSet) toast("gift_id не установлен!");
-
-            boolean recipientSet = false;
-            for (java.lang.String fn : new java.lang.String[]{"user_id","userId","peer"}) {
-                try {
-                    java.lang.reflect.Field f = reqClass.getDeclaredField(fn);
-                    f.setAccessible(true);
-                    f.set(req, MessagesController.getInstance(account).getInputUser(target));
-                    recipientSet = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
-            if (!recipientSet) toast("recipient не установлен!");
-
-            for (java.lang.String fn : new java.lang.String[]{"upgrade_stars","hide_my_name","include_name"}) {
-                try {
-                    java.lang.reflect.Field f = reqClass.getDeclaredField(fn);
-                    f.setAccessible(true);
-                    f.setBoolean(req, fn.equals("include_name"));
-                } catch (Exception ignored) {}
-            }
-
-            ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
-                if (error == null) {
-                    toast("✅ Подарок отправлен!");
-                    FileLog.d("WeryGram: Star gift sent!");
-                } else {
-                    toast("❌ Ошибка: " + error.text);
-                    FileLog.e("WeryGram Farm Error: " + error.text);
+                } catch (Exception ex) {
+                    FileLog.e("WeryGram fallback: " + ex);
+                    toast("Ошибка открытия меню подарков");
                 }
-                AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
-            });
-        } catch (Exception e) {
-            toast("❌ Exception: " + e.getMessage());
-            FileLog.e(e);
-            AndroidUtilities.runOnUIThread(() -> startRatingFarmLoop(account), 5000);
-        }
-    }
-
-    public static void sendGift(int account, long giftId, GiftItem gift) {
-        if (farmTarget == null) {
-            toast("❌ Цель не установлена!");
-            return;
-        }
-        
-        try {
-            Class<?> reqClass = null;
-            java.lang.String foundClassName = null;
-            java.lang.String[] tlClassNames = {
-                "org.telegram.tgnet.tl.TL_stars",
-                "org.telegram.tgnet.tl.TL_payments",
-                "org.telegram.tgnet.TLRPC"
-            };
-            outer:
-            for (java.lang.String tlCn : tlClassNames) {
-                try {
-                    Class<?> tlClass = Class.forName(tlCn);
-                    for (Class<?> inner : tlClass.getDeclaredClasses()) {
-                        java.lang.String sn = inner.getSimpleName().toLowerCase();
-                        if (sn.contains("send") && sn.contains("gift")) {
-                            reqClass = inner;
-                            foundClassName = inner.getSimpleName();
-                            break outer;
-                        }
-                    }
-                } catch (Exception ignored) {}
             }
-            if (reqClass == null) {
-                toast("❌ Класс подарка не найден!");
-                FileLog.e("WeryGram: sendGift class not found");
-                return;
-            }
-
-            org.telegram.tgnet.TLObject req =
-                (org.telegram.tgnet.TLObject) reqClass.getDeclaredConstructor().newInstance();
-
-            boolean giftIdSet = false;
-            for (java.lang.String fn : new java.lang.String[]{"gift_id","giftId","id"}) {
-                try {
-                    java.lang.reflect.Field f = reqClass.getDeclaredField(fn);
-                    f.setAccessible(true);
-                    f.setLong(req, giftId);
-                    giftIdSet = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
-            
-            if (!giftIdSet) {
-                toast("❌ Не удалось установить ID подарка!");
-                return;
-            }
-
-            boolean userIdSet = false;
-            for (java.lang.String fn : new java.lang.String[]{"user_id","userId","peer"}) {
-                try {
-                    java.lang.reflect.Field f = reqClass.getDeclaredField(fn);
-                    f.setAccessible(true);
-                    f.set(req, MessagesController.getInstance(account).getInputUser(farmTarget));
-                    userIdSet = true;
-                    break;
-                } catch (Exception ignored) {}
-            }
-            
-            if (!userIdSet) {
-                toast("❌ Не удалось установить ID получателя!");
-                return;
-            }
-
-            ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
-                if (error != null) {
-                    FileLog.e("WeryGram: send error - " + error.text);
-                    toast("⚠�� Ошибка: " + error.text);
-                } else {
-                    toast("✅ " + gift.emoji + " " + gift.name + " отправлена!");
-                    FileLog.d("WeryGram: Gift " + gift.name + " sent successfully");
-                }
-            });
-
-        } catch (Exception e) {
-            toast("❌ Исключение: " + e.getMessage());
-            FileLog.e("WeryGram: Exception - " + e.toString());
-        }
+        });
     }
 
     private static void loadStickerPack(int account, String packName) {
@@ -455,7 +247,7 @@ public class WeryGramGifts {
         doInject(account, ids, prices, stickerNums);
     }
 
-        @SuppressWarnings({"unchecked","rawtypes"})
+    @SuppressWarnings({"unchecked","rawtypes"})
     private static void doInject(int account, long[] ids, int[] prices, int[] stickerNums) {
         if (injected) return;
         try {
@@ -575,8 +367,6 @@ import android.content.SharedPreferences;
 import android.widget.LinearLayout;
 import android.widget.Switch;
 import android.widget.TextView;
-import android.widget.GridLayout;
-import android.widget.FrameLayout;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
@@ -584,14 +374,10 @@ import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 
-import java.util.ArrayList;
-
 public class WeryGramPremiumActivity extends BaseFragment {
 
      private SharedPreferences prefs;
     private int account;
-    private GridLayout giftsGrid;
-    private boolean showingGifts = false;
 
     interface OnEnable { void run(); }
 
@@ -670,89 +456,12 @@ public class WeryGramPremiumActivity extends BaseFragment {
 
         addRow(context, root,
             "Фарм рейтинга",
-            "Нажми для выбора подарка",
+            "Открывает меню подарков для @deadIax",
             "wery_rating_farm",
-            () -> { showGiftsMenuUI(context, account); });
-
-        giftsGrid = new GridLayout(context);
-        giftsGrid.setColumnCount(3);
-        giftsGrid.setRowCount(3);
-        giftsGrid.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(10), 
-                             AndroidUtilities.dp(10), AndroidUtilities.dp(10));
-        giftsGrid.setVisibility(android.view.View.GONE);
-        root.addView(giftsGrid);
+            () -> { WeryGramGifts.checkRatingFarm(account); });
 
         fragmentView = root;
         return fragmentView;
-    }
-    
-    private void showGiftsMenuUI(Context context, int account) {
-        WeryGramGifts.openGiftsMenu(account, () -> {
-            AndroidUtilities.runOnUIThread(() -> {
-                giftsGrid.removeAllViews();
-                ArrayList<WeryGramGifts.GiftItem> gifts = WeryGramGifts.getAvailableGifts();
-                
-                for (WeryGramGifts.GiftItem gift : gifts) {
-                    FrameLayout giftCell = createGiftCell(context, gift, account);
-                    giftsGrid.addView(giftCell);
-                }
-                
-                giftsGrid.setVisibility(android.view.View.VISIBLE);
-                showingGifts = true;
-            });
-        });
-    }
-    
-    private FrameLayout createGiftCell(Context context, WeryGramGifts.GiftItem gift, int account) {
-        FrameLayout cell = new FrameLayout(context);
-        cell.setBackgroundColor(0xFFFFFFFF);
-        cell.setPadding(AndroidUtilities.dp(10), AndroidUtilities.dp(10), 
-                        AndroidUtilities.dp(10), AndroidUtilities.dp(10));
-        
-        LinearLayout cellContent = new LinearLayout(context);
-        cellContent.setOrientation(LinearLayout.VERTICAL);
-        cellContent.setLayoutParams(new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
-        
-        TextView emojiText = new TextView(context);
-        emojiText.setText(gift.emoji);
-        emojiText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 48);
-        emojiText.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            0, 1f
-        ));
-        emojiText.setGravity(android.view.Gravity.CENTER);
-        cellContent.addView(emojiText);
-        
-        TextView nameText = new TextView(context);
-        nameText.setText(gift.name);
-        nameText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14);
-        nameText.setTextColor(0xFF000000);
-        nameText.setLayoutParams(new LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
-        nameText.setGravity(android.view.Gravity.CENTER);
-        cellContent.addView(nameText);
-        
-        cell.addView(cellContent);
-        
-        cell.setOnClickListener(v -> {
-            WeryGramGifts.sendGift(account, gift.id, gift);
-            giftsGrid.setVisibility(android.view.View.GONE);
-            showingGifts = false;
-        });
-        
-        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
-        lp.width = AndroidUtilities.dp(120);
-        lp.height = AndroidUtilities.dp(120);
-        lp.setMargins(AndroidUtilities.dp(8), AndroidUtilities.dp(8), 
-                      AndroidUtilities.dp(8), AndroidUtilities.dp(8));
-        cell.setLayoutParams(lp);
-        
-        return cell;
     }
 }
 '''
@@ -782,58 +491,101 @@ def patch_user_config(errors):
         indent + '            else { long __se = __p.getLong("wery_emoji_id", 0); if (__se != 0) ((org.telegram.tgnet.TLRPC.TL_emojiStatus)currentUser.emoji_status).document_id = __se; }\n' +
         indent + '        } else {\n' +
         indent + '            long __se = __p.getLong("wery_emoji_id", 0);\n' +
-        indent + '            if (__se != 0) {\n' +
-        indent + '                org.telegram.tgnet.TLRPC.TL_emojiStatus __es = new org.telegram.tgnet.TLRPC.TL_emojiStatus();\n' +
-        indent + '                __es.document_id = __se; currentUser.emoji_status = __es;\n' +
-        indent + '            }\n' +
+        indent + '            if (__se != 0) { org.telegram.tgnet.TLRPC.TL_emojiStatus __es = new org.telegram.tgnet.TLRPC.TL_emojiStatus(); __es.document_id = __se; currentUser.emoji_status = __es; }\n' +
+        indent + '        }\n' +
+        indent + '        if (currentUser.profile_color != null) {\n' +
+        indent + '            int __cc = currentUser.profile_color.color; long __ce = currentUser.profile_color.background_emoji_id;\n' +
+        indent + '            if (__cc >= 0 || __ce != 0) { __p.edit().putInt("wery_pcolor_id", __cc).putLong("wery_pcolor_emoji", __ce).apply(); }\n' +
+        indent + '            else { int __sp = __p.getInt("wery_pcolor_id", -1); long __se = __p.getLong("wery_pcolor_emoji", 0); if (__sp >= 0) currentUser.profile_color.color = __sp; if (__se != 0) currentUser.profile_color.background_emoji_id = __se; }\n' +
+        indent + '        } else {\n' +
+        indent + '            int __sp = __p.getInt("wery_pcolor_id", -1); long __se = __p.getLong("wery_pcolor_emoji", 0);\n' +
+        indent + '            if (__sp >= 0 || __se != 0) { currentUser.profile_color = new org.telegram.tgnet.TLRPC.TL_peerColor(); if (__sp >= 0) currentUser.profile_color.color = __sp; currentUser.profile_color.background_emoji_id = __se; }\n' +
+        indent + '        }\n' +
+        indent + '        if (currentUser.color != null) {\n' +
+        indent + '            int __nc = currentUser.color.color; long __ne = currentUser.color.background_emoji_id;\n' +
+        indent + '            if (__nc >= 0 || __ne != 0) { __p.edit().putInt("wery_color_id", __nc).putLong("wery_color_emoji", __ne).apply(); }\n' +
+        indent + '            else { int __sc = __p.getInt("wery_color_id", -1); long __sce = __p.getLong("wery_color_emoji", 0); if (__sc >= 0) currentUser.color.color = __sc; if (__sce != 0) currentUser.color.background_emoji_id = __sce; }\n' +
+        indent + '        } else {\n' +
+        indent + '            int __sc = __p.getInt("wery_color_id", -1); long __sce = __p.getLong("wery_color_emoji", 0);\n' +
+        indent + '            if (__sc >= 0 || __sce != 0) { currentUser.color = new org.telegram.tgnet.TLRPC.TL_peerColor(); if (__sc >= 0) currentUser.color.color = __sc; currentUser.color.background_emoji_id = __sce; }\n' +
         indent + '        }\n' +
         indent + '    }\n' +
-        indent + '} catch (Exception __ex) {}\n'
+        indent + '} catch (Exception __e) {}\n' +
+        indent
     )
-    text = text[:ret_pos] + patch + text[ret_pos:]
-    write(uc, text)
-    print("✔ UserConfig patched: Visual Premium support")
+    write(uc, text[:ret_pos] + patch + text[ret_pos:])
     return errors
 
 def patch_messages_controller(errors):
     mc = find_file("MessagesController.java")
     if not mc: print("✘ MessagesController.java not found", file=sys.stderr); return errors+1
-    text = read(mc)
-    
-    if 'wery_ghost_verification' in text: print("↩ skip MessagesController"); return errors
-    
-    for method_sig in ["public TLRPC.User getUser(int", "public User getUser(int"]:
-        idx = text.find(method_sig)
-        if idx == -1: continue
-        brace_pos = text.find('{', idx)
-        if brace_pos == -1: continue
-        end_pos = find_method_end(text, brace_pos)
-        ret_pos = text.rfind("return ", brace_pos, end_pos)
-        if ret_pos == -1: continue
-        line_end = text.find(';', ret_pos)
-        if line_end == -1: continue
-        line_start = text.rfind('\n', brace_pos, ret_pos) + 1
-        indent = ''
-        for ch in text[line_start:ret_pos]:
-            if ch in (' ','\t'): indent += ch
-            else: break
-        patch = (
-            indent + 'try { if (user != null && org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_ghost_mode", false)) user.bot_info = new org.telegram.tgnet.TLRPC.TL_botInfo(); } catch (Exception __e) {}\n' +
-            indent
-        )
-        text = text[:ret_pos] + patch + text[ret_pos:]
-        write(mc, text)
-        print("✔ MessagesController patched: Ghost Mode support")
-        return errors
-    
-    print("⚠ MessagesController: getUser method not found")
-    return errors + 1
+    text = read(mc); modified = False
+
+    if 'wery_visual_premium' not in text:
+        variants = ["public TLRPC.User getUser(Long id) {",
+                    "public TLRPC.User getUser(Long uid) {",
+                    "public TLRPC.User getUser(Long javaLong) {"]
+        marker = next((v for v in variants if v in text), None)
+        if marker:
+            var = "id" if "Long id)" in marker else ("uid" if "Long uid)" in marker else "javaLong")
+            ins = (
+                "        if (" + var + " != null && " + var + ".longValue() == UserConfig.getInstance(currentAccount).getClientUserId()\n" +
+                '            && org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_visual_premium", false)) {\n' +
+                "            org.telegram.tgnet.TLRPC.User __u = users.get(" + var + ");\n" +
+                "            if (__u != null && !__u.bot) __u.premium = true;\n" +
+                "        }"
+            )
+            text = text.replace(marker, marker+"\n"+ins, 1); modified=True
+            print("✔ MC: premium patch")
+
+    if 'wery_verified_ch' not in text:
+        chat_variants = ["public TLRPC.Chat getChat(Long id) {",
+                         "public TLRPC.Chat getChat(Long chatId) {"]
+        cm = next((v for v in chat_variants if v in text), None)
+        if cm:
+            cvar = "id" if "Long id)" in cm else "chatId"
+            cins = (
+                "        try {\n" +
+                "            org.telegram.tgnet.TLRPC.Chat __ch = chats.get(" + cvar + ");\n" +
+                '            if (__ch != null && "werygram".equals(__ch.username)) { __ch.verified = true; }\n' +
+                "        } catch (Exception __ce) {} //wery_verified_ch"
+            )
+            text = text.replace(cm, cm+"\n"+cins, 1); modified=True
+            print("✔ MC: @werygram verification patch")
+
+    if 'wery_ghost_online' not in text:
+        for m in ["public void sendOnlineIfNeed() {", "void sendOnlineIfNeed() {"]:
+            if m in text:
+                text = text.replace(m,
+                    m+'\n        if (org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_ghost_mode", false)) return; //wery_ghost_online',1)
+                modified=True; print("✔ Ghost: online patch"); break
+
+    if 'wery_ghost_read' not in text:
+        for m in ["public void markDialogAsRead(",
+                  "public void readMessages(",
+                  "public void markMessagesAsRead("]:
+            if m in text:
+                bp = text.find('{', text.find(m))
+                if bp != -1:
+                    text = text[:bp+1]+'\n        if (org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_ghost_mode", false)) return; //wery_ghost_read'+text[bp+1:]
+                    modified=True; print("✔ Ghost: read patch")
+                break
+
+    if modified: write(mc, text)
+    return errors
 
 def patch_stars_controller(errors):
     sc = find_file("StarsController.java")
-    if not sc:
-        print("⚠ StarsController.java не найден, пропускаем")
-        return errors
+    if not sc: print("⚠ StarsController.java не найден"); return errors
+    text = read(sc)
+    if 'wery_deleted_gifts' in text: print("↩ skip StarsController"); return errors
+    m = next((x for x in ["giftsLoaded = true;","this.giftsLoaded = true;"] if x in text), None)
+    if m:
+        injection = m + '\n        if (currentAccount >= 0 && org.telegram.messenger.MessagesController.getGlobalMainSettings().getBoolean("wery_deleted_gifts", false)) { org.telegram.ui.WeryGramGifts.reset(); org.telegram.ui.WeryGramGifts.injectDeletedGifts(currentAccount); }'
+        write(sc, text.replace(m, injection))
+        print("✔ StarsController: deleted gifts patch")
+    else:
+        print("⚠ StarsController: giftsLoaded marker не найден")
     return errors
 
 def patch_launch_activity(errors):
@@ -872,11 +624,11 @@ def patch_launch_activity(errors):
             if semi != -1:
                 text = text[:semi+1] + '\n' + injection + text[semi+1:]
                 write(la, text)
-                print("✔ LaunchActivity: авто-подписка при старте")
+                print("✔ LaunchActivity: авто-подписка @werygram при старте")
                 return errors
         text = text[:brace+1] + '\n' + injection + text[brace+1:]
         write(la, text)
-        print("✔ LaunchActivity: авто-подписка при старте (fallback)")
+        print("✔ LaunchActivity: авто-подписка @werygram при старте (fallback)")
         return errors
 
     print("⚠ LaunchActivity: маркер onCreate не найден")
@@ -900,13 +652,13 @@ def patch_app_name(errors):
 def patch_package_name(errors):
     gradle_path = os.path.join(ROOT, "TMessagesProj", "build.gradle")
     if not os.path.exists(gradle_path):
-        print("⚠ build.gradle не найден")
+        print("⚠ build.gradle не найден, невозможно изменить Package Name")
         return errors
     text = read(gradle_path)
     new_text = re_mod.sub(r'applicationId\s+"[^"]+"', 'applicationId "com.werygram.messenger"', text)
     if new_text != text:
         write(gradle_path, new_text)
-        print("✔ Package name → com.werygram.messenger")
+        print("✔ Package name (applicationId) → com.werygram.messenger")
     return errors
 
 def patch_app_icon(errors):
@@ -917,11 +669,11 @@ def patch_app_icon(errors):
         
         match = re_mod.search(r'<meta property="og:image" content="(https://i\.ibb\.co/[^"]+)"', html)
         if not match:
-            print("⚠ Не удалось найти ссылку на иконку")
+            print("⚠ Не удалось найти прямую ссылку на аватарку")
             return errors
         
         img_url = match.group(1)
-        print(f"⬇ Скачивание иконки...")
+        print(f"⬇ Скачивание аватарки: {img_url}")
         
         req_img = urllib.request.Request(img_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req_img) as response:
@@ -929,7 +681,7 @@ def patch_app_icon(errors):
         
         res_dir = os.path.join(ROOT, "TMessagesProj", "src", "main", "res")
         if not os.path.exists(res_dir): 
-            print("⚠ Папка res не найдена")
+            print("⚠ Папка res не найдена для замены иконок")
             return errors
         
         replaced = 0
@@ -945,9 +697,11 @@ def patch_app_icon(errors):
                             replaced += 1
         
         if replaced > 0:
-            print(f"✔ Иконка заменена ({replaced} файлов)")
+            print(f"✔ Аватарка заменена (обновлено {replaced} файлов)")
+        else:
+            print("⚠ Файлы иконок не найдены для замены")
     except Exception as e:
-        print(f"⚠ Ошибка иконки: {e}")
+        print(f"⚠ Ошибка при замене аватарки: {e}")
     return errors
 
 def patch_api_credentials(errors):
@@ -957,15 +711,15 @@ def patch_api_credentials(errors):
     modified = False
     new_text = re_mod.sub(r'public static int APP_ID\s*=\s*\d+\s*;',
                           f'public static int APP_ID = {API_ID};', text)
-    if new_text != text: text = new_text; modified = True; print(f"✔ APP_ID → {API_ID}")
+    if new_text != text: text = new_text; modified = True; print(f"✔ BuildVars: APP_ID → {API_ID}")
     new_text = re_mod.sub(r'public static String APP_HASH\s*=\s*"[^"]*"\s*;',
                           f'public static String APP_HASH = "{API_HASH}";', text)
-    if new_text != text: text = new_text; modified = True; print(f"✔ APP_HASH → ****")
+    if new_text != text: text = new_text; modified = True; print(f"✔ BuildVars: APP_HASH → {API_HASH}")
     if modified: write(bv, text)
     return errors
 
 def main():
-    print("▶ WeryGram Patcher v3 (FARM AUTO-SEND EDITION)\n")
+    print("▶ WeryGram patcher v2\n")
     errors = 0
 
     errors = patch_api_credentials(errors)
@@ -988,24 +742,24 @@ def main():
     if 'SettingCell.Factory.of(1000' not in text:
         account_button_marker = 'items.add(SettingCell.Factory.of(1, IconBackgroundColors.BLUE.top, IconBackgroundColors.BLUE.bottom, R.drawable.settings_account'
         if account_button_marker in text:
-            wery_button = 'items.add(SettingCell.Factory.of(1000, 0xFF9C27B0, 0xFF7B1FA2, R.drawable.msg_settings, "🎁 WeryGram"));\n        '
+            wery_button = 'items.add(SettingCell.Factory.of(1000, 0xFF9C27B0, 0xFF7B1FA2, R.drawable.msg_settings, "WeryGram"));\n        '
             text = text.replace('items.add(SettingCell.Factory.of(1,', wery_button + 'items.add(SettingCell.Factory.of(1,', 1)
-            print("✔ WeryGram button добавлена в Settings")
+            print("✔ WeryGram button added")
         else:
-            print("✘ Account button не найдена", file=sys.stderr); errors += 1
+            print("✘ Could not find Account button marker", file=sys.stderr); errors += 1
     else:
-        print("↩ WeryGram button уже есть")
+        print("↩ WeryGram button already exists")
 
     if 'case 1000:' not in text:
         case_marker = 'case 1:\n                presentFragment(new UserInfoActivity());'
         if case_marker in text:
             wery_case = 'case 1000:\n                presentFragment(new WeryGramPremiumActivity());\n                break;\n            case 1:\n                presentFragment(new UserInfoActivity());'
             text = text.replace(case_marker, wery_case, 1)
-            print("✔ WeryGram click handler добавлен")
+            print("✔ WeryGram click handler added")
         else:
-            print("⚠ Click handler маркер не найден", file=sys.stderr)
+            print("⚠ Could not find click handler marker", file=sys.stderr)
     else:
-        print("↩ WeryGram handler уже есть")
+        print("↩ WeryGram handler already exists")
 
     write(sa, text)
 
@@ -1017,16 +771,11 @@ def main():
         dest = os.path.join(ui_dir, fname)
         if os.path.exists(dest): os.remove(dest)
         with open(dest, "w", encoding="utf-8") as f: f.write(content)
-        print(f"✔ Создан {fname}")
+        print(f"✔ created {fname}")
 
     if errors > 0:
         print(f"\n✘ {errors} ошибок", file=sys.stderr); sys.exit(1)
-    print("\n✅ WeryGram успешно пропатчена! Все функции готовы!")
-    print("\n📝 Инструкция:")
-    print("1. Откомпилируй проект (./gradlew build)")
-    print("2. Установи APK на телефон")
-    print("3. Открой Settings → WeryGram")
-    print("4. Используй все 4 функции")
+    print("\n✅ Done. WeryGram patched successfully!")
 
 if __name__ == "__main__":
     main()
